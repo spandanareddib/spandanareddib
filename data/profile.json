@@ -1,0 +1,14 @@
+{
+  "github_username": "spandanareddib",
+  "name": "Spandana Reddy",
+  "eyebrow": "final-year b.tech, data science",
+  "tagline": "I'm into data science, web development and open source, and I like building things that solve real problems.",
+  "hero_link": "spandanareddib@gmail.com",
+  "repos_title": ["What I'm", "building"],
+  "featured_repos": [],
+  "tiles": [
+    {"label": "build", "big": "WorkTwin AI", "text": "Our final-year major project, now in Phase I."},
+    {"label": "open source", "big": "LLMOps", "text": "Contributing to Observal, an open-source observability platform for LLM apps."},
+    {"label": "hackathons", "big": "3 in 2026", "text": "Amazon Developer Hackathon, HackerRank Orchestrate and the Wispr Challenge."}
+  ]
+}

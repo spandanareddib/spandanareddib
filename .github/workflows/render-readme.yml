@@ -1,0 +1,38 @@
+name: Render README cards
+
+on:
+  schedule:
+    - cron: "30 2 * * *"      # every day at 08:00 IST
+  workflow_dispatch:           # lets you run it by hand from the Actions tab
+  push:
+    paths:
+      - "scripts/**"
+      - "data/profile.json"
+      - "data/portrait.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install fonttools
+      - name: Render cards
+        run: python scripts/render_readme_cards.py
+        env:
+          # Use a personal token (secret PROFILE_TOKEN) to include private-repo contributions;
+          # otherwise the built-in token is used.
+          GITHUB_TOKEN: ${{ secrets.PROFILE_TOKEN || secrets.GITHUB_TOKEN }}
+          USERNAME_GH: ${{ github.repository_owner }}
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cards data/contributions.json
+          git diff --cached --quiet || git commit -m "chore: refresh README cards"
+          git push
