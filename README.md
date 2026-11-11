@@ -1,4 +1,4 @@
-<a href="https://spandanareddib.github.io"><img src="./cards/hero.svg" alt="Spandana Reddy. Final-year B.Tech student in data science. I build LLM-powered apps and APIs, and contribute to open-source developer tools." width="100%"/></a>
+<a href="https://spandanareddib.github.io"><img src="./cards/hero.svg" alt="Spandana Reddy. Final-year B.Tech student in data science. I'm into data science, web development and open source, and I like building things that solve real problems" width="100%"/></a>
 <br/>
 <img src="./cards/heatmap.svg" alt="My contribution graph for the last year, refreshed daily" width="100%"/>
 <br/>
