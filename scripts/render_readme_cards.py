@@ -43,6 +43,22 @@ STACK = {
 }
 
 
+ROW_W = 800 / 3          # each of three cards in a row is drawn on a 1/3-width canvas...
+GAP = 8                  # ...with the gap baked in, so the row fills the README width exactly
+CARD_W = (800 - 2 * GAP) / 3
+_FONT_CACHE = {}
+
+
+def text_width(fam, txt, size):
+    """Width of txt in px, measured from the real font file."""
+    from fontTools.ttLib import TTFont
+    if fam not in _FONT_CACHE:
+        f = TTFont(str(FONTS / FAMILIES[fam][0]))
+        _FONT_CACHE[fam] = (f.getBestCmap(), f["hmtx"], f["head"].unitsPerEm)
+    cmap, hmtx, upm = _FONT_CACHE[fam]
+    return sum(hmtx[cmap.get(ord(c), ".notdef")][0] if cmap.get(ord(c)) else upm * .5 for c in txt) * size / upm
+
+
 # ---------------------------------------------------------------- font embedding
 def subset_font(path, chars):
     from fontTools import subset
@@ -139,7 +155,7 @@ query($login:String!,$from:DateTime!,$to:DateTime!){
     }
     repositories(first:30,privacy:PUBLIC,ownerAffiliations:OWNER,isFork:false,
                  orderBy:{field:PUSHED_AT,direction:DESC}){
-      nodes{name description stargazerCount primaryLanguage{name color}}
+      nodes{name description pushedAt stargazerCount primaryLanguage{name color}}
     }
   }
 }"""
@@ -163,7 +179,7 @@ def gh_graphql(login, token):
     days = [{"date": d["date"], "count": d["contributionCount"]}
             for w in cal["weeks"] for d in w["contributionDays"]]
     repos = [{"name": n["name"], "description": n["description"] or "",
-              "stars": n["stargazerCount"],
+              "stars": n["stargazerCount"], "pushed": n["pushedAt"],
               "language": (n["primaryLanguage"] or {}).get("name", ""),
               "color": (n["primaryLanguage"] or {}).get("color") or MUTED}
              for n in u["repositories"]["nodes"]]
@@ -181,12 +197,9 @@ def demo_data():
         c = 0 if rnd.random() < 0.28 else int(rnd.random() ** 2 * 9 * busy)
         days.append({"date": d.isoformat(), "count": c})
     return {"total": sum(d["count"] for d in days), "days": days}, [
-        {"name": "your-repo-one", "description": "Pinned repos are picked automatically from your latest public work.",
-         "stars": 4, "language": "Python", "color": "#3572A5"},
-        {"name": "your-repo-two", "description": "Edit featured_repos in data/profile.json to choose your own.",
-         "stars": 2, "language": "TypeScript", "color": "#3178c6"},
-        {"name": "your-repo-three", "description": "Language colour and star count come from the GitHub API.",
-         "stars": 0, "language": "Jupyter Notebook", "color": "#DA5B0B"}]
+        {"name": "pulse-architect", "description": "", "stars": 0, "language": "TypeScript", "color": "#3178c6"},
+        {"name": "roadsos-hackathon-2026", "description": "", "stars": 0, "language": "HTML", "color": "#e34c26"},
+        {"name": "spandanareddib.github.io", "description": "", "stars": 0, "language": "HTML", "color": "#e34c26"}]
 
 
 def stats(cal):
@@ -329,14 +342,14 @@ def activity(cal):
     return s.render()
 
 
-def tile(t, color, ink, delay):
-    s = Svg(262, 196)
+def tile(t, color, ink, delay, inset):
+    s = Svg(ROW_W, 196)
     s.css.append(KEYFRAMES)
     s.css.append(".arr{animation:nudge 2.4s ease-in-out 4s infinite}" if not STATIC else "")
-    s.add(f'<g style="transform-box:fill-box;transform-origin:50% 100%;{anim("swing", 1.1, delay)}">')
-    s.add(f'<rect width="262" height="196" rx="18" fill="{color}"/>')
+    s.add(f'<g transform="translate({inset:.2f},0)"><g style="transform-box:fill-box;transform-origin:50% 100%;{anim("swing", 1.1, delay)}">')
+    s.add(f'<rect width="{CARD_W:.2f}" height="196" rx="18" fill="{color}"/>')
     s.text(t["label"], 22, 34, "SRMono", 10.5, ink)
-    s.text("→", 240, 35, "SRSans", 14, ink, "end", cls="arr")
+    s.text("→", CARD_W - 22, 35, "SRSans", 14, ink, "end", cls="arr")
     big = t["big"]
     digits = ""
     for ch in big:
@@ -358,28 +371,50 @@ def tile(t, color, ink, delay):
         s.text(big, 22, 102, "SRSerifI", 38, ink)
     for i, line in enumerate(textwrap.wrap(t["text"], 31)[:4]):
         s.text(line, 22, 138 + i * 18, "SRSans", 13, ink)
-    s.add("</g>")
+    s.add("</g></g>")
     return s.render()
 
 
-def title(p, color):
-    s = Svg(800, 64)
-    s.mixed([(p["repos_title"][0] + " ", "SRSerif", color), (p["repos_title"][1], "SRSerifI", color)], 8, 46, 34)
-    return s.render()
-
-
-def repo_card(r, delay):
-    s = Svg(262, 156)
+def title(p):
+    """Heading drawn as its own paper card, so it reads on both light and dark GitHub themes."""
+    s = Svg(800, 68)
     s.css.append(KEYFRAMES)
-    s.add(f'<g style="{anim("rise", .8, delay)}">')
-    s.add(f'<rect width="262" height="156" rx="18" fill="{PAPER}"/>')
+    card_bg(s)
+    s.mixed([(p["repos_title"][0] + " ", "SRSerif", INK), (p["repos_title"][1], "SRSerifI", TEAL)], 40, 44, 30)
+    s.text(p.get("repos_note", "latest public repos"), 760, 40, "SRMono", 10, MUTED, "end")
+    return s.render()
+
+
+def ago(iso):
+    if not iso:
+        return ""
+    d = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(iso.replace("Z", "+00:00"))).days
+    return "updated today" if d < 1 else f"updated {d} days ago" if d < 60 else f"updated {d // 30} months ago"
+
+
+def repo_lines(r):
+    return textwrap.wrap(r.get("description") or ago(r.get("pushed")) or "Public repository", 33)[:3]
+
+
+def repo_card(r, delay, inset, nlines):
+    foot_y = 70 + nlines * 18 + 12          # card height follows the tallest description in the row
+    h = foot_y + 26
+    s = Svg(ROW_W, h)
+    s.css.append(KEYFRAMES)
+    s.add(f'<g transform="translate({inset:.2f},0)"><g style="{anim("rise", .8, delay)}">')
+    s.add(f'<rect width="{CARD_W:.2f}" height="{h}" rx="18" fill="{PAPER}"/>')
     s.add(f'<circle cx="28" cy="34" r="5" fill="{r["color"]}"/>')
-    s.text(r["name"], 42, 40, "SRSerif", 21, INK)
-    for i, line in enumerate(textwrap.wrap(r["description"] or "No description yet.", 33)[:3]):
+    name, size, room = r["name"], 21, CARD_W - 42 - 20
+    while text_width("SRSerif", name, size) > room and size > 15:
+        size -= 1
+    while text_width("SRSerif", name, size) > room and len(name) > 4:
+        name = name[:-2].rstrip("-.") + "…"
+    s.text(name, 42, 34 + size * .33, "SRSerif", size, INK)
+    for i, line in enumerate(repo_lines(r)):
         s.text(line, 24, 70 + i * 18, "SRSans", 12.5, MUTED)
     foot = (r["language"] + "  ·  " if r["language"] else "") + f"★ {r['stars']}"
-    s.text(foot, 24, 138, "SRMono", 10.5, MUTED)
-    s.add("</g>")
+    s.text(foot, 24, foot_y, "SRMono", 10.5, MUTED)
+    s.add("</g></g>")
     return s.render()
 
 
@@ -408,18 +443,28 @@ def main():
             cal = json.loads(cache.read_text())
     wanted = p.get("featured_repos") or []
     pool = [r for r in repos if r["name"].lower() != login.lower()]
-    picks = [r for n in wanted for r in pool if r["name"] == n] if wanted else pool
+    picks = []
+    for w in wanted:
+        name, desc = (w["name"], w.get("description")) if isinstance(w, dict) else (w, None)
+        for r in pool:
+            if r["name"] == name:
+                picks.append({**r, "description": desc or r["description"]})
+    if not wanted:
+        picks = pool
     picks = (picks + [{"name": "coming soon", "description": "Add a public repo and it shows up here.",
                        "stars": 0, "language": "", "color": MUTED}] * 3)[:3]
 
     CARDS.mkdir(exist_ok=True)
-    out = {"hero": hero(p), "heatmap": heatmap(cal), "activity": activity(cal),
-           "title-building-light": title(p, INK), "title-building-dark": title(p, "#F3F1F7")}
+    out = {"hero": hero(p), "heatmap": heatmap(cal), "activity": activity(cal), "title-building": title(p)}
     palette = [(TEAL, "#FFFFFF"), (PINK, "#FFFFFF"), (SUN, INK)]
+    inset = lambda i: i * (GAP + CARD_W - ROW_W)
     for i, (t, (c, ink)) in enumerate(zip(p["tiles"], palette)):
-        out[f"tile-{i + 1}"] = tile(t, c, ink, 0.3 + i * .18)
+        out[f"tile-{i + 1}"] = tile(t, c, ink, 0.3 + i * .18, inset(i))
+    nl = max(len(repo_lines(r)) for r in picks)
     for i, r in enumerate(picks):
-        out[f"repo-{i + 1}"] = repo_card(r, 0.3 + i * .15)
+        out[f"repo-{i + 1}"] = repo_card(r, 0.3 + i * .15, inset(i), nl)
+    for old in ("title-building-light", "title-building-dark"):
+        (CARDS / f"{old}.svg").unlink(missing_ok=True)
     for name, svg in out.items():
         (CARDS / f"{name}.svg").write_text(svg, encoding="utf-8")
         print(f"cards/{name}.svg  {len(svg) / 1024:.1f} KB")
